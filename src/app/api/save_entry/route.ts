@@ -52,7 +52,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       message: "Entrada guardada correctamente",
-      data: upsertResult,
+      data: JSON.parse(
+        JSON.stringify(upsertResult, (key, value) =>
+          typeof value === "bigint" ? value.toString() : value,
+        ),
+      ),
     });
   } catch (error) {
     console.error("Error al guardar la entrada:", error);

@@ -10,11 +10,9 @@ export type Player = {
 };
 
 // Tipos para las props de la página
-type PlayerPageProps = {
-  params: {
-    token: string;
-  };
-};
+interface PlayerPageProps {
+  params: Promise<{ token: string }>;
+}
 
 // Función para obtener los datos del jugador desde el servidor usando Prisma
 async function getPlayerByToken(token: string): Promise<Player | null> {
@@ -41,8 +39,11 @@ async function getPlayerByToken(token: string): Promise<Player | null> {
 
 // El componente de la página (Server Component)
 export default async function PlayerPage({ params }: PlayerPageProps) {
+  // Await params before accessing its properties
+  const { token } = await params;
+
   // 1. Obtenemos los datos del jugador en el servidor
-  const player = await getPlayerByToken(params.token);
+  const player = await getPlayerByToken(token);
 
   // 2. Si el token no es válido o el jugador no existe, Next.js mostrará la página 404.
   if (!player) {
