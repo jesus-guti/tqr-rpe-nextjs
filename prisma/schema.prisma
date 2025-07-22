@@ -2,19 +2,33 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-    provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-    provider = "postgresql"
-    url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // Se conecta a Supabase
+  directUrl = env("DIRECT_URL")
 }
 
-model Post {
-    id        Int      @id @default(autoincrement())
-    name      String
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+model players {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  auth_token    String   @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  daily_entries daily_entries[]
+}
 
-    @@index([name])
+model daily_entries {
+  id             BigInt   @id @default(autoincrement())
+  player_id      String   @db.Uuid
+  entry_date     DateTime @db.Date
+  tqr_recovery   Int?
+  tqr_energy     Int?
+  tqr_soreness   Int?
+  rpe_borg_scale Int?
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  players        players  @relation(fields: [player_id], references: [id], onDelete: Cascade)
+
+  @@unique([player_id, entry_date])
 }
