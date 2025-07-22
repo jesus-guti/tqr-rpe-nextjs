@@ -258,7 +258,7 @@ export default function PlayerInterface() {
                         "bg-red-50 border-red-200 text-red-800", // 9
                         "bg-red-100 border-red-300 text-red-900", // 10
                       ];
-                      return colors[value] || colors[0];
+                      return colors[value] ?? colors[0];
                     };
 
                     return (
