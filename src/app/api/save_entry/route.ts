@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { GoogleSheetsService } from "@/lib/google-sheets";
 
 interface SaveEntryRequest {
   authToken: string;
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
     // 2. Validar el authToken y obtener el ID del jugador
     const player = await prisma.players.findUnique({
       where: { auth_token: authToken },
-      select: { id: true },
+      select: { id: true, name: true, auth_token: true },
     });
 
     if (!player) {
@@ -59,6 +60,45 @@ export async function POST(request: Request) {
       },
     });
 
+    // Try to sync to Google Sheets if configured
+    let sheetsSync = {
+      success: false,
+      message: "Google Sheets not configured",
+    };
+
+    if (process.env.GOOGLE_SPREADSHEET_ID) {
+      try {
+        const sheetsService = new GoogleSheetsService();
+        await sheetsService.updateSpreadsheetData(
+          process.env.GOOGLE_SPREADSHEET_ID,
+          [
+            {
+              id: playerId,
+              name: player.name,
+              auth_token: player.auth_token,
+              daily_entries: [
+                {
+                  entry_date: dateObject,
+                  tqr_recovery: formData.tqr_recovery ?? undefined,
+                  tqr_energy: formData.tqr_energy ?? undefined,
+                  tqr_soreness: formData.tqr_soreness ?? undefined,
+                  rpe_borg_scale: formData.rpe_borg_scale ?? undefined,
+                },
+              ],
+            },
+          ],
+          new Date(),
+        );
+        sheetsSync = { success: true, message: "Data synced to Google Sheets" };
+      } catch (error) {
+        console.error("Google Sheets sync error:", error);
+        sheetsSync = {
+          success: false,
+          message: "Failed to sync to Google Sheets",
+        };
+      }
+    }
+
     return NextResponse.json({
       message: "Entrada guardada correctamente",
       data: JSON.parse(
@@ -66,6 +106,7 @@ export async function POST(request: Request) {
           typeof value === "bigint" ? value.toString() : value,
         ),
       ) as Record<string, unknown>,
+      sheetsSync,
     });
   } catch (error) {
     console.error("Error al guardar la entrada:", error);

@@ -17,6 +17,7 @@
         "lint": "next lint",
         "lint:fix": "next lint --fix",
         "preview": "next build && next start",
+        "setup:sheets": "node scripts/setup-google-sheets.js",
         "start": "next start",
         "typecheck": "tsc --noEmit"
     },
@@ -34,6 +35,8 @@
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "date-fns": "^4.1.0",
+        "google-auth-library": "^10.1.0",
+        "googleapis": "^153.0.0",
         "lucide-react": "^0.525.0",
         "next": "^15.2.3",
         "react": "^19.0.0",
