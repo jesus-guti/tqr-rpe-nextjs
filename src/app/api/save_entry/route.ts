@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
+interface SaveEntryRequest {
+  authToken: string;
+  entryDate: string;
+  tqr_recovery?: number;
+  tqr_energy?: number;
+  tqr_soreness?: number;
+  rpe_borg_scale?: number;
+}
+
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const body = (await request.json()) as SaveEntryRequest;
     const { authToken, entryDate, ...formData } = body;
 
     // 1. Validar que los datos necesarios estén presentes
@@ -30,7 +39,7 @@ export async function POST(request: Request) {
     const { id: playerId } = player;
 
     // Convertir entryDate a objeto Date si es una cadena
-    const dateObject = new Date(entryDate);
+    const dateObject = new Date(entryDate + "T00:00:00.000Z");
 
     // 3. Realizar la operación "UPSERT"
     const upsertResult = await prisma.daily_entries.upsert({
@@ -56,7 +65,7 @@ export async function POST(request: Request) {
         JSON.stringify(upsertResult, (key, value) =>
           typeof value === "bigint" ? value.toString() : value,
         ),
-      ),
+      ) as Record<string, unknown>,
     });
   } catch (error) {
     console.error("Error al guardar la entrada:", error);

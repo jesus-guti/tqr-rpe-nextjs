@@ -78,7 +78,7 @@ export default function PlayerForm({ player }: { player: Player }) {
         },
         body: JSON.stringify({
           authToken: player.auth_token,
-          entryDate: selectedDate,
+          entryDate: format(selectedDate, "yyyy-MM-dd"),
           tqr_recovery: recovery[0],
           tqr_energy: energy,
           tqr_soreness: soreness,
@@ -110,7 +110,7 @@ export default function PlayerForm({ player }: { player: Player }) {
         },
         body: JSON.stringify({
           authToken: player.auth_token,
-          entryDate: selectedDate,
+          entryDate: format(selectedDate, "yyyy-MM-dd"),
           rpe_borg_scale: effort[0],
         }),
       });
