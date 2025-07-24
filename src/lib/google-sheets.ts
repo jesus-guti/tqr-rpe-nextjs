@@ -224,8 +224,8 @@ export class GoogleSheetsService {
 
           // For now, we'll use soreness data as the main metric
           // This can be expanded to include other metrics
-          const value = entry?.tqr_soreness || 0;
-          row.push(value);
+          const value = entry?.tqr_soreness ?? 0;
+          row.push(value.toString());
         }
 
         return row;
