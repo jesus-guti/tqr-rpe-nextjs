@@ -1,359 +1,216 @@
 import { google } from "googleapis";
 import { JWT } from "google-auth-library";
 
+// The PlayerData interface remains the same.
 interface PlayerData {
   id: string;
   name: string;
   auth_token: string;
   daily_entries: Array<{
     entry_date: Date;
-    tqr_recovery?: number;
-    tqr_energy?: number;
-    tqr_soreness?: number;
-    rpe_borg_scale?: number;
+    tqr_recovery?: number | null;
+    tqr_energy?: number | null;
+    tqr_soreness?: number | null;
+    rpe_borg_scale?: number | null;
   }>;
-}
-
-interface MicrocycleData {
-  startDate: Date;
-  endDate: Date;
-  players: PlayerData[];
 }
 
 export class GoogleSheetsService {
   private auth: JWT;
   private sheets: any;
-  private drive: any; // Add a property for the Drive API client
+  private readonly sheetName = "MICROCICLOS";
 
   constructor() {
     this.auth = new JWT({
       email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-      scopes: [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive.file",
-      ],
+      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
     });
-
     this.sheets = google.sheets({ version: "v4", auth: this.auth });
-    this.drive = google.drive({ version: "v3", auth: this.auth }); // Initialize the Drive API client
-  }
-
-  async createSpreadsheet(
-    title: string = "CONTROL CARGA TQR-RPE",
-  ): Promise<string> {
-    try {
-      // Step 1: Create the spreadsheet resource
-      const resource = {
-        properties: {
-          title,
-        },
-      };
-
-      const spreadsheet = await this.sheets.spreadsheets.create({
-        resource,
-        fields: "spreadsheetId",
-      });
-
-      const spreadsheetId = spreadsheet.data.spreadsheetId;
-      if (!spreadsheetId) {
-        throw new Error("Spreadsheet creation failed to return an ID.");
-      }
-
-      console.log(
-        `✅ Spreadsheet created successfully with ID: ${spreadsheetId}`,
-      );
-      console.log("Skipping move to folder for this test.");
-
-      // --- TEMPORARILY COMMENT OUT THE FOLLOWING CODE ---
-      const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
-      if (!folderId) {
-        console.warn("GOOGLE_DRIVE_FOLDER_ID is not set.");
-      } else {
-        // Step 2: Move the newly created spreadsheet to the specified folder
-        await this.drive.files.update({
-          fileId: spreadsheetId,
-          addParents: folderId,
-          fields: "id, parents",
-        });
-      }
-
-      // Step 3: Initialize with headers (your existing logic)
-      await this.initializeSpreadsheet(spreadsheetId);
-      // --- END OF TEMPORARILY COMMENTED OUT CODE ---
-
-      return spreadsheetId;
-    } catch (error: any) {
-      if (error.response) {
-        console.error(
-          "Google API error response:",
-          JSON.stringify(error.response.data, null, 2),
-        );
-      } else {
-        console.error("Error creating spreadsheet:", error.message);
-      }
-      throw new Error(
-        "Failed to create Google Spreadsheet. Check server logs for details.",
-      );
-    }
   }
 
   /**
-   * Initialize spreadsheet with headers and formatting
+   * Updates the "MICROCICLOS" sheet by finding the next available columns
+   * and writing the new week's data horizontally.
+   * @param spreadsheetId The ID of the spreadsheet.
+   * @param players An array of all players from the database.
+   * @param microcycleStartDate The start date of the week to sync.
    */
-  private async initializeSpreadsheet(spreadsheetId: string): Promise<void> {
-    const requests = [
-      // Set up headers
-      {
+  public async updateSpreadsheetData(
+    spreadsheetId: string,
+    players: PlayerData[],
+    microcycleStartDate: Date,
+  ): Promise<void> {
+    try {
+      // 1. Find the next available starting column by reading the header row.
+      const headerRange = `'${this.sheetName}'!2:2`; // Read the row with dates
+      const headerResponse = await this.sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: headerRange,
+      });
+
+      // Column index is 0-based. +1 for "NOMBRE" col.
+      const startColumnIndex = headerResponse.data.values
+        ? headerResponse.data.values[0].length
+        : 1;
+
+      // 2. Prepare all data and requests for a single batch update.
+      const requests = [];
+      const playerNames = players.map((p) => [p.name]);
+      const microcycleNumber = Math.floor((startColumnIndex - 1) / 7) + 1;
+
+      // --- Request to update the list of player names (Column A) ---
+      requests.push({
+        updateCells: {
+          range: {
+            sheetId: 0, // Assuming the first sheet
+            startRowIndex: 2, // Start below headers
+            startColumnIndex: 0,
+            endColumnIndex: 1,
+          },
+          rows: playerNames.map((name) => ({
+            values: [{ userEnteredValue: { stringValue: name[0] } }],
+          })),
+          fields: "userEnteredValue",
+        },
+      });
+
+      // --- Request to add the new "MICROCICLO X" header ---
+      requests.push({
+        mergeCells: {
+          range: {
+            sheetId: 0,
+            startRowIndex: 0,
+            endRowIndex: 1,
+            startColumnIndex: startColumnIndex,
+            endColumnIndex: startColumnIndex + 7,
+          },
+          mergeType: "MERGE_ALL",
+        },
+      });
+      requests.push({
         updateCells: {
           range: {
             sheetId: 0,
             startRowIndex: 0,
-            endRowIndex: 3,
-            startColumnIndex: 0,
-            endColumnIndex: 15,
+            startColumnIndex: startColumnIndex,
           },
           rows: [
             {
               values: [
-                { userEnteredValue: { stringValue: "CONTROL CARGA" } },
-                { userEnteredValue: { stringValue: "MICROCICLO 1" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-              ],
-            },
-            {
-              values: [
-                { userEnteredValue: { stringValue: "NOMBRE" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
-                { userEnteredValue: { stringValue: "" } },
+                {
+                  userEnteredValue: {
+                    stringValue: `MICROCICLO ${microcycleNumber}`,
+                  },
+                  userEnteredFormat: {
+                    horizontalAlignment: "CENTER",
+                    textFormat: { bold: true },
+                  },
+                },
               ],
             },
           ],
-          fields: "userEnteredValue",
+          fields: "userEnteredValue,userEnteredFormat",
         },
-      },
-      // Format headers
-      {
-        repeatCell: {
+      });
+
+      // --- Request to add the new date headers ---
+      const dateHeaders = this.generateDateHeaders(microcycleStartDate);
+      requests.push({
+        updateCells: {
           range: {
             sheetId: 0,
-            startRowIndex: 0,
-            endRowIndex: 3,
-            startColumnIndex: 0,
-            endColumnIndex: 15,
+            startRowIndex: 1, // The second row
+            startColumnIndex: startColumnIndex,
           },
-          cell: {
-            userEnteredFormat: {
-              backgroundColor: { red: 0.8, green: 0.2, blue: 0.2 },
-              textFormat: {
-                bold: true,
-                foregroundColor: { red: 1, green: 1, blue: 1 },
-              },
-              horizontalAlignment: "CENTER",
-              verticalAlignment: "MIDDLE",
+          rows: [
+            {
+              values: dateHeaders.map((header) => ({
+                userEnteredValue: { stringValue: header },
+                userEnteredFormat: {
+                  horizontalAlignment: "CENTER",
+                  textFormat: { bold: true },
+                },
+              })),
             },
-          },
-          fields:
-            "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)",
+          ],
+          fields: "userEnteredValue,userEnteredFormat",
         },
-      },
-    ];
+      });
 
-    await this.sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: { requests },
-    });
-  }
-
-  /**
-   * Update spreadsheet with player data
-   */
-  async updateSpreadsheetData(
-    spreadsheetId: string,
-    players: PlayerData[],
-    microcycleStartDate: Date = new Date(),
-  ): Promise<void> {
-    try {
-      // Calculate microcycle dates (7 days)
-      const microcycleEndDate = new Date(microcycleStartDate);
-      microcycleEndDate.setDate(microcycleEndDate.getDate() + 6);
-
-      // Generate date headers
-      const dateHeaders = this.generateDateHeaders(
-        microcycleStartDate,
-        microcycleEndDate,
-      );
-
-      // Prepare data rows
-      const dataRows = players.map((player) => {
-        const row = [player.name]; // Start with player name
-
-        // Add data for each date in the microcycle
+      // --- Requests to add the player data for the new week ---
+      players.forEach((player, playerIndex) => {
+        const rowData = [];
         for (let i = 0; i < 7; i++) {
           const currentDate = new Date(microcycleStartDate);
           currentDate.setDate(currentDate.getDate() + i);
+          const dateString = currentDate.toISOString().split("T")[0];
 
           const entry = player.daily_entries.find(
-            (entry) =>
-              entry.entry_date.toDateString() === currentDate.toDateString(),
+            (e) => e.entry_date.toISOString().split("T")[0] === dateString,
           );
 
-          // For now, we'll use soreness data as the main metric
-          // This can be expanded to include other metrics
-          const value = entry?.tqr_soreness ?? 0;
-          row.push(value.toString());
+          rowData.push({
+            userEnteredValue: {
+              // Use numberValue for numbers, stringValue for empty strings
+              numberValue: entry?.tqr_soreness ?? undefined,
+              stringValue: entry?.tqr_soreness === undefined ? "" : undefined,
+            },
+            userEnteredFormat: { horizontalAlignment: "CENTER" },
+          });
         }
 
-        return row;
+        requests.push({
+          updateCells: {
+            range: {
+              sheetId: 0,
+              startRowIndex: playerIndex + 2, // +2 to account for header rows
+              startColumnIndex: startColumnIndex,
+            },
+            rows: [{ values: rowData }],
+            fields: "userEnteredValue,userEnteredFormat",
+          },
+        });
       });
 
-      // Prepare the update request
-      const updateData = [
-        // Date headers row
-        dateHeaders,
-        // Player data rows
-        ...dataRows,
-      ];
-
-      // Update the spreadsheet
-      await this.sheets.spreadsheets.values.update({
+      // 3. Execute the batch update with all prepared requests.
+      await this.sheets.spreadsheets.batchUpdate({
         spreadsheetId,
-        range: "MICROCICLO 1!A2:H" + (dataRows.length + 2),
-        valueInputOption: "RAW",
         requestBody: {
-          values: updateData,
+          requests,
         },
       });
-
-      // Add summary rows at the bottom
-      await this.addSummaryRows(spreadsheetId, dataRows.length + 3);
     } catch (error) {
       console.error("Error updating spreadsheet data:", error);
-      throw new Error("Failed to update Google Spreadsheet");
+      throw new Error("Failed to update Google Spreadsheet.");
     }
   }
 
   /**
-   * Generate date headers for the microcycle
+   * Generates just the 7 daily date headers for a microcycle.
    */
-  private generateDateHeaders(startDate: Date, endDate: Date): string[] {
-    const headers = ["NOMBRE"];
-    const daysOfWeek = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
+  private generateDateHeaders(startDate: Date): string[] {
+    const headers = [];
+    const daysOfWeek = [
+      "DOMINGO",
+      "LUNES",
+      "MARTES",
+      "MIÉRCOLES",
+      "JUEVES",
+      "VIERNES",
+      "SÁBADO",
+    ];
 
     for (let i = 0; i < 7; i++) {
       const currentDate = new Date(startDate);
       currentDate.setDate(currentDate.getDate() + i);
-
-      const day = currentDate.getDate();
-      const month = currentDate.getMonth() + 1;
-      const dayOfWeek = daysOfWeek[currentDate.getDay()];
-
-      headers.push(`${day}-${month.toString().padStart(2, "0")} ${dayOfWeek}`);
+      const datePart = `${currentDate.getDate()}-${currentDate.toLocaleString("es-ES", { month: "short" }).replace(".", "")}`;
+      headers.push(`${datePart}\n${daysOfWeek[currentDate.getDay()]}`);
     }
-
     return headers;
   }
 
-  /**
-   * Add summary rows at the bottom of the spreadsheet
-   */
-  private async addSummaryRows(
-    spreadsheetId: string,
-    startRow: number,
-  ): Promise<void> {
-    const summaryRows = [
-      ["RPEMEDIA", 0, 0, 0, 0, 0, 0, 0],
-      ["TIEMPO TOTAL SESIÓN", 80, 80, 80, 80, 80, 80, 80],
-      ["CARGA MEDIA", 0, 0, 0, 0, 0, 0, 0],
-      ["SUMATORIO MICROCICLO", 0, 0, 0, 0, 0, 0, 0],
-      ["CARGA AGUDA", 0, 0, 0, 0, 0, 0, 0],
-      ["CARGA CRÓNICA", 0, 0, 0, 0, 0, 0, 0],
-      ["A:C 7-28", 0, 0, 0, 0, 0, 0, 0],
-    ];
-
-    const requests = [
-      {
-        updateCells: {
-          range: {
-            sheetId: 0,
-            startRowIndex: startRow - 1,
-            endRowIndex: startRow + summaryRows.length - 1,
-            startColumnIndex: 0,
-            endColumnIndex: 8,
-          },
-          rows: summaryRows.map((row, index) => ({
-            values: row.map((value, colIndex) => ({
-              userEnteredValue: {
-                numberValue: typeof value === "number" ? value : undefined,
-                stringValue: typeof value === "string" ? value : undefined,
-              },
-              userEnteredFormat: {
-                backgroundColor: this.getSummaryRowColor(index),
-                textFormat: { bold: true },
-                horizontalAlignment: "CENTER",
-              },
-            })),
-          })),
-          fields: "userEnteredValue,userEnteredFormat",
-        },
-      },
-    ];
-
-    await this.sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: { requests },
-    });
-  }
-
-  /**
-   * Get color for summary rows based on index
-   */
-  private getSummaryRowColor(index: number): {
-    red: number;
-    green: number;
-    blue: number;
-  } {
-    const colors = [
-      { red: 0.8, green: 0.6, blue: 1.0 }, // Purple for RPEMEDIA
-      { red: 1.0, green: 1.0, blue: 0.0 }, // Yellow for TIEMPO TOTAL
-      { red: 1.0, green: 0.2, blue: 0.2 }, // Red for CARGA MEDIA
-      { red: 0.2, green: 0.2, blue: 0.8 }, // Dark Blue for SUMATORIO
-      { red: 1.0, green: 0.8, blue: 0.8 }, // Pink for CARGA AGUDA
-      { red: 1.0, green: 0.8, blue: 0.8 }, // Pink for CARGA CRÓNICA
-      { red: 1.0, green: 0.8, blue: 0.8 }, // Pink for A:C 7-28
-    ];
-
-    return colors[index] || { red: 0.9, green: 0.9, blue: 0.9 };
-  }
-
-  /**
-   * Get spreadsheet URL
-   */
-  getSpreadsheetUrl(spreadsheetId: string): string {
+  public getSpreadsheetUrl(spreadsheetId: string): string {
     return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
   }
 }

@@ -4,10 +4,30 @@ import prisma from "@/lib/prisma";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as {
-      spreadsheetId: string;
-      microcycleStartDate?: string;
-    };
+    // Check if request has content
+    const contentType = request.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      return NextResponse.json(
+        { success: false, error: "Content-Type must be application/json" },
+        { status: 400 },
+      );
+    }
+
+    let body: { spreadsheetId: string; microcycleStartDate?: string };
+
+    try {
+      const requestBody = await request.json();
+      body = requestBody as {
+        spreadsheetId: string;
+        microcycleStartDate?: string;
+      };
+    } catch (jsonError) {
+      return NextResponse.json(
+        { success: false, error: "Invalid JSON in request body" },
+        { status: 400 },
+      );
+    }
+
     const { spreadsheetId, microcycleStartDate } = body;
 
     if (!spreadsheetId) {

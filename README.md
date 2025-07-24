@@ -1,29 +1,93 @@
-# Create T3 App
+# TQR-RPE Form Application
 
-This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3-app`.
+A modern web application for collecting, managing, and analyzing player wellness and training data (TQR, RPE, recovery, soreness, energy) for sports teams. Data is stored in a database and can be automatically synced to Google Sheets for further analysis and reporting.
 
-## What's next? How do I make an app with this?
+---
 
-We try to keep this project as simple as possible, so you can start with just the scaffolding we set up for you, and add additional things later when they become necessary.
+## 🚀 Features
 
-If you are not familiar with the different technologies used in this project, please refer to the respective docs. If you still are in the wind, please join our [Discord](https://t3.gg/discord) and ask for help.
+- **Player Self-Reporting**: Players submit daily pre- and post-training forms (TQR, RPE, soreness, energy, recovery).
+- **Coach/Admin Dashboard**: Manage players, view and export data, and sync to Google Sheets.
+- **Google Sheets Integration**: Syncs all player data to a Google Sheet in a format compatible with sports science workflows.
+- **Microcycle Management**: Organize and analyze data by weekly microcycles.
+- **Modern UI/UX**: Built with Next.js, React, Tailwind CSS, and Shadcn UI components.
+- **Secure & Scalable**: Uses Prisma ORM, PostgreSQL (Supabase), and supports Docker deployment.
 
-- [Next.js](https://nextjs.org)
-- [NextAuth.js](https://next-auth.js.org)
-- [Prisma](https://prisma.io)
-- [Drizzle](https://orm.drizzle.team)
-- [Tailwind CSS](https://tailwindcss.com)
-- [tRPC](https://trpc.io)
+---
 
-## Learn More
+## 🛠️ Tech Stack
 
-To learn more about the [T3 Stack](https://create.t3.gg/), take a look at the following resources:
+- **Frontend**: Next.js (App Router), React, TypeScript, Tailwind CSS, Shadcn UI
+- **Backend**: Next.js API routes, Prisma ORM, PostgreSQL (Supabase)
+- **Integrations**: Google Sheets API
+- **Dev Tools**: ESLint, Prettier, Jest, React Testing Library, Docker, pnpm
 
-- [Documentation](https://create.t3.gg/)
-- [Learn the T3 Stack](https://create.t3.gg/en/faq#what-learning-resources-are-currently-available) — Check out these awesome tutorials
+---
 
-You can check out the [create-t3-app GitHub repository](https://github.com/t3-oss/create-t3-app) — your feedback and contributions are welcome!
+## ⚡ Quick Start
 
-## How do I deploy this?
+1. **Clone the repo:**
+   ```sh
+   git clone <repo-url>
+   cd tqr-rpe-form-nextjs
+   ```
+2. **Install dependencies:**
+   ```sh
+   pnpm install
+   ```
+3. **Configure environment:**
+   - Copy `.env.example` to `.env.local` and fill in your database and Google Sheets credentials (see [Google Sheets Integration Setup](./GOOGLE_SHEETS_SETUP.md)).
+4. **Run database migrations:**
+   ```sh
+   pnpm db:generate
+   pnpm db:push
+   ```
+5. **Start the dev server:**
+   ```sh
+   pnpm dev
+   ```
+6. **Access the app:**
+   - Open [http://localhost:3000](http://localhost:3000)
 
-Follow our deployment guides for [Vercel](https://create.t3.gg/en/deployment/vercel), [Netlify](https://create.t3.gg/en/deployment/netlify) and [Docker](https://create.t3.gg/en/deployment/docker) for more information.
+---
+
+## 📊 Google Sheets Integration
+
+- Automatically syncs all player data to a Google Sheet for easy analysis and reporting.
+- See [GOOGLE_SHEETS_SETUP.md](./GOOGLE_SHEETS_SETUP.md) for detailed setup instructions.
+- API endpoints:
+  - `POST /api/sheets/create` — Create a new spreadsheet
+  - `POST /api/sheets/sync` — Sync all player data to Google Sheets
+
+---
+
+## 🧑‍💻 Development
+
+- **Code Quality**: ESLint, Prettier, Airbnb style guide
+- **Testing**: Jest, React Testing Library
+- **Type Safety**: TypeScript everywhere
+- **CI/CD**: Ready for GitHub Actions, Docker, and Vercel/Netlify deployment
+
+---
+
+## 🐞 Troubleshooting
+
+- **Google Sheets errors**: Double-check your credentials, spreadsheet ID, and sheet/tab names.
+- **Database issues**: Ensure your PostgreSQL/Supabase instance is running and credentials are correct.
+- **.env issues**: Never commit `.env.local` to version control. Check for typos and correct formatting.
+- See [GOOGLE_SHEETS_SETUP.md](./GOOGLE_SHEETS_SETUP.md) for more help.
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repo and create your feature branch (`git checkout -b feature/my-feature`)
+2. Commit your changes (`git commit -am 'Add new feature'`)
+3. Push to the branch (`git push origin feature/my-feature`)
+4. Open a Pull Request
+
+---
+
+## 📄 License
+
+MIT
