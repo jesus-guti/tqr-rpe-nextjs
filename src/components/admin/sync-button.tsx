@@ -1,8 +1,11 @@
+// SyncButton.tsx
+
 "use client";
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 
 export function SyncButton() {
   const [isLoading, setIsLoading] = useState(false);
@@ -15,20 +18,21 @@ export function SyncButton() {
         headers: {
           "Content-Type": "application/json",
         },
+        // This body MUST be included in the request
         body: JSON.stringify({
           spreadsheetId: process.env.NEXT_PUBLIC_GOOGLE_SPREADSHEET_ID,
-          microcycleStartDate: "2025-07-21",
         }),
       });
 
       if (response.ok) {
-        alert("Sincronización completada");
+        const result = await response.json();
+        toast.success(result.message || "Sincronización completada");
       } else {
-        alert("Error en la sincronización");
+        toast.error("Error en la sincronización");
       }
     } catch (error) {
       console.error("Error syncing:", error);
-      alert("Error en la sincronización");
+      toast.error("Error en la sincronización");
     } finally {
       setIsLoading(false);
     }

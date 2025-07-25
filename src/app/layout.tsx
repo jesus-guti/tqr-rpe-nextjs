@@ -23,7 +23,7 @@ export default function RootLayout({
     <html lang="en" className={`${geist.variable}`}>
       <body>
         {children}
-        <Toaster />
+        <Toaster richColors />
       </body>
     </html>
   );

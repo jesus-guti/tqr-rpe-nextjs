@@ -1,7 +1,9 @@
+// lib/google-sheets.ts
+
 import { google } from "googleapis";
 import { JWT } from "google-auth-library";
 
-// The PlayerData interface remains the same.
+// PlayerData interface (no changes needed)
 interface PlayerData {
   id: string;
   name: string;
@@ -29,41 +31,35 @@ export class GoogleSheetsService {
     this.sheets = google.sheets({ version: "v4", auth: this.auth });
   }
 
-  /**
-   * Updates the "MICROCICLOS" sheet by finding the next available columns
-   * and writing the new week's data horizontally.
-   * @param spreadsheetId The ID of the spreadsheet.
-   * @param players An array of all players from the database.
-   * @param microcycleStartDate The start date of the week to sync.
-   */
   public async updateSpreadsheetData(
     spreadsheetId: string,
     players: PlayerData[],
     microcycleStartDate: Date,
   ): Promise<void> {
     try {
-      // 1. Find the next available starting column by reading the header row.
-      const headerRange = `'${this.sheetName}'!2:2`; // Read the row with dates
+      // 1. Read the date header row to find existing microcycles
+      const headerRange = `'${this.sheetName}'!2:2`;
       const headerResponse = await this.sheets.spreadsheets.values.get({
         spreadsheetId,
         range: headerRange,
       });
+      const existingHeaders = headerResponse.data.values
+        ? headerResponse.data.values[0]
+        : [];
 
-      // Column index is 0-based. +1 for "NOMBRE" col.
-      const startColumnIndex = headerResponse.data.values
-        ? headerResponse.data.values[0].length
-        : 1;
+      // 2. Search for the column of the current microcycle
+      const dateHeadersForWeek = this.generateDateHeaders(microcycleStartDate);
+      const targetHeader = dateHeadersForWeek[0]; // Header for Monday
+      let startColumnIndex = existingHeaders.indexOf(targetHeader);
 
-      // 2. Prepare all data and requests for a single batch update.
       const requests = [];
       const playerNames = players.map((p) => [p.name]);
-      const microcycleNumber = Math.floor((startColumnIndex - 1) / 7) + 1;
 
-      // --- Request to update the list of player names (Column A) ---
+      // --- Always update the list of player names (Column A) ---
       requests.push({
         updateCells: {
           range: {
-            sheetId: 0, // Assuming the first sheet
+            sheetId: 0,
             startRowIndex: 2, // Start below headers
             startColumnIndex: 0,
             endColumnIndex: 1,
@@ -75,70 +71,47 @@ export class GoogleSheetsService {
         },
       });
 
-      // --- Request to add the new "MICROCICLO X" header ---
-      requests.push({
-        mergeCells: {
-          range: {
-            sheetId: 0,
-            startRowIndex: 0,
-            endRowIndex: 1,
-            startColumnIndex: startColumnIndex,
-            endColumnIndex: startColumnIndex + 7,
-          },
-          mergeType: "MERGE_ALL",
-        },
-      });
-      requests.push({
-        updateCells: {
-          range: {
-            sheetId: 0,
-            startRowIndex: 0,
-            startColumnIndex: startColumnIndex,
-          },
-          rows: [
-            {
-              values: [
-                {
-                  userEnteredValue: {
-                    stringValue: `MICROCICLO ${microcycleNumber}`,
-                  },
+      // 3. Decide whether to UPDATE an existing microcycle or INSERT a new one
+      if (startColumnIndex !== -1) {
+        // --- A. UPDATE EXISTING MICROCYCLE ---
+        console.log(
+          `Updating existing microcycle at column index: ${startColumnIndex}`,
+        );
+      } else {
+        // --- B. INSERT NEW MICROCYCLE ---
+        startColumnIndex =
+          existingHeaders.length > 0 ? existingHeaders.length : 1;
+        console.log(
+          `Inserting new microcycle at column index: ${startColumnIndex}`,
+        );
+
+        // The "MICROCICLO X" merge/unmerge requests have been REMOVED.
+
+        // Add request to create the date headers
+        requests.push({
+          updateCells: {
+            range: {
+              sheetId: 0,
+              startRowIndex: 1,
+              startColumnIndex: startColumnIndex,
+            },
+            rows: [
+              {
+                values: dateHeadersForWeek.map((header) => ({
+                  userEnteredValue: { stringValue: header },
                   userEnteredFormat: {
                     horizontalAlignment: "CENTER",
                     textFormat: { bold: true },
                   },
-                },
-              ],
-            },
-          ],
-          fields: "userEnteredValue,userEnteredFormat",
-        },
-      });
-
-      // --- Request to add the new date headers ---
-      const dateHeaders = this.generateDateHeaders(microcycleStartDate);
-      requests.push({
-        updateCells: {
-          range: {
-            sheetId: 0,
-            startRowIndex: 1, // The second row
-            startColumnIndex: startColumnIndex,
+                })),
+              },
+            ],
+            fields: "userEnteredValue,userEnteredFormat",
           },
-          rows: [
-            {
-              values: dateHeaders.map((header) => ({
-                userEnteredValue: { stringValue: header },
-                userEnteredFormat: {
-                  horizontalAlignment: "CENTER",
-                  textFormat: { bold: true },
-                },
-              })),
-            },
-          ],
-          fields: "userEnteredValue,userEnteredFormat",
-        },
-      });
+        });
+      }
 
-      // --- Requests to add the player data for the new week ---
+      // 4. Prepare player data requests for either UPDATE or INSERT
       players.forEach((player, playerIndex) => {
         const rowData = [];
         for (let i = 0; i < 7; i++) {
@@ -151,11 +124,7 @@ export class GoogleSheetsService {
           );
 
           rowData.push({
-            userEnteredValue: {
-              // Use numberValue for numbers, stringValue for empty strings
-              numberValue: entry?.tqr_soreness ?? undefined,
-              stringValue: entry?.tqr_soreness === undefined ? "" : undefined,
-            },
+            userEnteredValue: { numberValue: entry?.tqr_soreness ?? undefined },
             userEnteredFormat: { horizontalAlignment: "CENTER" },
           });
         }
@@ -164,7 +133,7 @@ export class GoogleSheetsService {
           updateCells: {
             range: {
               sheetId: 0,
-              startRowIndex: playerIndex + 2, // +2 to account for header rows
+              startRowIndex: playerIndex + 2,
               startColumnIndex: startColumnIndex,
             },
             rows: [{ values: rowData }],
@@ -173,12 +142,10 @@ export class GoogleSheetsService {
         });
       });
 
-      // 3. Execute the batch update with all prepared requests.
+      // 5. Execute the single batch update
       await this.sheets.spreadsheets.batchUpdate({
         spreadsheetId,
-        requestBody: {
-          requests,
-        },
+        requestBody: { requests },
       });
     } catch (error) {
       console.error("Error updating spreadsheet data:", error);
@@ -186,9 +153,7 @@ export class GoogleSheetsService {
     }
   }
 
-  /**
-   * Generates just the 7 daily date headers for a microcycle.
-   */
+  // This helper function remains the same.
   private generateDateHeaders(startDate: Date): string[] {
     const headers = [];
     const daysOfWeek = [
@@ -200,7 +165,6 @@ export class GoogleSheetsService {
       "VIERNES",
       "SÁBADO",
     ];
-
     for (let i = 0; i < 7; i++) {
       const currentDate = new Date(startDate);
       currentDate.setDate(currentDate.getDate() + i);
@@ -210,6 +174,7 @@ export class GoogleSheetsService {
     return headers;
   }
 
+  // This helper function remains the same.
   public getSpreadsheetUrl(spreadsheetId: string): string {
     return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
   }
