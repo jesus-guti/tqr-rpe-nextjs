@@ -5,14 +5,16 @@ import { ExternalLink } from "lucide-react";
 
 export function SheetsButton() {
   const handleOpenSheets = () => {
-    window.open("https://docs.google.com/spreadsheets", "_blank");
+    window.open(
+      `https://docs.google.com/spreadsheets/d/${process.env.NEXT_PUBLIC_GOOGLE_SPREADSHEET_ID}`,
+      "_blank",
+    );
   };
 
   return (
     <Button
       onClick={handleOpenSheets}
-      variant="outline"
-      className="w-full border-orange-300 bg-transparent text-orange-700 hover:bg-orange-50"
+      className="w-full bg-orange-600 hover:bg-orange-700"
     >
       <ExternalLink className="mr-2 h-4 w-4" />
       Abrir Sheets

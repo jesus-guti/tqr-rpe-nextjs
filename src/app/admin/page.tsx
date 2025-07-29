@@ -26,6 +26,7 @@ import { SyncButton } from "@/components/admin/sync-button";
 import { SheetsButton } from "@/components/admin/sheets-button";
 import { LogoutButton } from "@/components/admin/logout-button";
 import { PlayersTable } from "@/components/admin/players-table";
+import Link from "next/link";
 
 export default async function AdminInterface() {
   const users = await getPlayers();
@@ -64,8 +65,8 @@ export default async function AdminInterface() {
                 Sincronización
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className="mb-4 text-sm text-gray-600">
+            <CardContent className="flex h-full flex-col">
+              <p className="mb-4 flex-grow text-sm text-gray-600">
                 Sincroniza la base de datos con Google Sheets
               </p>
               <Suspense
@@ -88,8 +89,8 @@ export default async function AdminInterface() {
                 Nuevo Jugador
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className="mb-4 text-sm text-gray-600">
+            <CardContent className="flex h-full flex-col">
+              <p className="mb-4 flex-grow text-sm text-gray-600">
                 Añade un nuevo jugador al sistema
               </p>
               <CreatePlayerForm />
@@ -104,14 +105,10 @@ export default async function AdminInterface() {
                 Google Sheets
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <a
-                href="https://docs.google.com/spreadsheets/d/16ZX-qrKq-_Jk7ZLoCxuvUjDA-kC0zinwR8-qGtiqAHI"
-                className="mb-4 text-sm text-gray-600"
-                target="_blank"
-              >
+            <CardContent className="flex h-full flex-col">
+              <p className="mb-4 flex-grow text-sm text-gray-600">
                 Accede directamente a la hoja de cálculo
-              </a>
+              </p>
               <Suspense
                 fallback={
                   <Button disabled className="w-full">
