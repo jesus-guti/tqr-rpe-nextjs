@@ -6,8 +6,6 @@ import { GoogleSheetsService } from "@/lib/google-sheets";
 import prisma from "@/lib/prisma";
 
 // Define a reusable type for player data with entries
-type PlayerWithEntries = Awaited<ReturnType<typeof prisma.players.findFirst>>;
-type DailyEntry = PlayerWithEntries["daily_entries"][0];
 
 export async function POST(request: Request) {
   try {
