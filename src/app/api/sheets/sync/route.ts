@@ -1,101 +1,101 @@
 // src/app/api/sheets/sync/route.ts
 
 import { NextResponse } from "next/server";
-import { startOfWeek } from "date-fns";
 import { GoogleSheetsService } from "@/lib/google-sheets";
 import prisma from "@/lib/prisma";
 
-// Define a reusable type for player data with entries
-
 export async function POST(request: Request) {
   try {
-    // Body parsing and validation
-    const body = (await request.json()) as { spreadsheetId: string };
-    const { spreadsheetId } = body;
+    // Check environment variables
+    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
+    const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+    const privateKey = process.env.GOOGLE_PRIVATE_KEY;
+
     if (!spreadsheetId) {
+      console.error("Missing GOOGLE_SPREADSHEET_ID environment variable");
       return NextResponse.json(
-        { error: "Spreadsheet ID is required" },
+        { success: false, error: "Spreadsheet ID not configured" },
         { status: 400 },
       );
     }
 
-    // --- NEW FULL SYNC LOGIC ---
-
-    // 1. Fetch ALL players with ALL of their daily entries, sorted by date.
-    const allPlayers = await prisma.players.findMany({
-      include: {
-        daily_entries: {
-          orderBy: {
-            entry_date: "asc",
-          },
+    if (!serviceAccountEmail) {
+      console.error(
+        "Missing GOOGLE_SERVICE_ACCOUNT_EMAIL environment variable",
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Google service account email not configured",
         },
-      },
-    });
-
-    if (!allPlayers.some((p) => p.daily_entries.length > 0)) {
-      return NextResponse.json({
-        success: true,
-        message: "No training data found in the database.",
-      });
-    }
-
-    // 2. Group all entries by microcycle (week).
-    // The Map will hold: { "2025-07-21": [playerDataForThatWeek], "2025-07-28": [...] }
-    const microcycles = new Map<string, typeof allPlayers>();
-
-    for (const player of allPlayers) {
-      for (const entry of player.daily_entries) {
-        // Find the Monday for this entry's week
-        const weekStartDate = startOfWeek(entry.entry_date, {
-          weekStartsOn: 1,
-        });
-        const weekKey = weekStartDate.toISOString().split("T")[0];
-
-        // Get or create the microcycle bucket
-        if (!microcycles.has(weekKey)) {
-          microcycles.set(weekKey, []);
-        }
-
-        const playersInWeek = microcycles.get(weekKey)!;
-        let playerInWeek = playersInWeek.find((p) => p.id === player.id);
-
-        // If this player isn't in this microcycle bucket yet, add them with an empty entries list.
-        if (!playerInWeek) {
-          playerInWeek = { ...player, daily_entries: [] };
-          playersInWeek.push(playerInWeek);
-        }
-
-        // Add the current entry to that player's list for that specific week.
-        playerInWeek.daily_entries.push(entry);
-      }
-    }
-
-    // 3. Sort the microcycles chronologically
-    const sortedWeeks = Array.from(microcycles.keys()).sort();
-
-    // 4. Process each microcycle one by one
-    const sheetsService = new GoogleSheetsService();
-    for (const weekKey of sortedWeeks) {
-      const playersForThisWeek = microcycles.get(weekKey)!;
-      const microcycleStartDate = new Date(`${weekKey}T12:00:00Z`);
-
-      console.log(`Syncing microcycle starting ${weekKey}...`);
-      await sheetsService.updateSpreadsheetData(
-        spreadsheetId,
-        playersForThisWeek,
-        microcycleStartDate,
+        { status: 400 },
       );
     }
 
+    if (!privateKey) {
+      console.error("Missing GOOGLE_PRIVATE_KEY environment variable");
+      return NextResponse.json(
+        { success: false, error: "Google private key not configured" },
+        { status: 400 },
+      );
+    }
+
+    console.log("Environment variables check passed");
+    console.log("Spreadsheet ID:", spreadsheetId);
+    console.log("Service Account Email:", serviceAccountEmail);
+
+    // Fetch all players with their daily entries from the last 6 months
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const players = await prisma.players.findMany({
+      include: {
+        daily_entries: {
+          where: {
+            entry_date: {
+              gte: sixMonthsAgo,
+            },
+          },
+          orderBy: { entry_date: "asc" },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    // Transform data for Google Sheets
+    const playerData = players.map((player) => ({
+      id: player.id,
+      name: player.name,
+      auth_token: player.auth_token,
+      daily_entries: player.daily_entries.map((entry) => ({
+        entry_date: entry.entry_date,
+        tqr_recovery: entry.tqr_recovery,
+        tqr_energy: entry.tqr_energy,
+        tqr_soreness: entry.tqr_soreness,
+        rpe_borg_scale: entry.rpe_borg_scale,
+      })),
+    }));
+
+    const sheetsService = new GoogleSheetsService();
+
+    // Update the spreadsheet with comprehensive data
+    await sheetsService.updateSpreadsheetData(spreadsheetId, playerData);
+
     return NextResponse.json({
       success: true,
-      message: `Full sync completed. Processed ${sortedWeeks.length} microcycles.`,
+      message: "Data synced successfully",
       spreadsheetUrl: sheetsService.getSpreadsheetUrl(spreadsheetId),
+      playersCount: playerData.length,
+      dateRange: "Last 6 months",
     });
   } catch (error) {
-    console.error("Error during full sync:", error);
+    console.error("Error syncing to Google Sheets:", error);
     return NextResponse.json(
-      { success: false, error: "Failed during full sync." },
+      {
+        success: false,
+        error:
+          "Failed to sync data to Google Sheets. Please check your credentials and spreadsheet ID.",
+      },
       { status: 500 },
     );
   }

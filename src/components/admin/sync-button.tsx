@@ -18,10 +18,6 @@ export function SyncButton() {
         headers: {
           "Content-Type": "application/json",
         },
-        // This body MUST be included in the request
-        body: JSON.stringify({
-          spreadsheetId: process.env.NEXT_PUBLIC_GOOGLE_SPREADSHEET_ID,
-        }),
       });
 
       if (response.ok) {
