@@ -4,6 +4,9 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { GoogleSheetsService } from "@/lib/google-sheets";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 interface SaveEntryRequest {
   authToken: string;
   entryDate: string;

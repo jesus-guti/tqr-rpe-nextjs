@@ -25,7 +25,9 @@ export class GoogleSheetsService {
   constructor() {
     this.auth = new JWT({
       email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+      key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n")
+        ?.replace(/^"|"$/g, "")
+        ?.replace(/^'|'$/g, ""),
       scopes: ["https://www.googleapis.com/auth/spreadsheets"],
     });
     this.sheets = google.sheets({ version: "v4", auth: this.auth });
