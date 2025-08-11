@@ -32,6 +32,165 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Updates only the cells corresponding to a single player's entry for a specific date
+   * according to the current table layout (4 columns per date: Recovery, Energy, Soreness, RPE).
+   * Assumes the sheet has already been initialized with headers for the season.
+   */
+  public async updateSingleEntryCells(
+    spreadsheetId: string,
+    playerName: string,
+    entry: {
+      entry_date: Date;
+      tqr_recovery?: number | null;
+      tqr_energy?: number | null;
+      tqr_soreness?: number | null;
+      rpe_borg_scale?: number | null;
+    },
+  ): Promise<void> {
+    // 1) Read header rows to locate the date column and metric offsets
+    const [headerRow1Res, headerRow2Res] = await Promise.all([
+      this.sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `'${this.sheetName}'!A1:ZZ1`,
+      }),
+      this.sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `'${this.sheetName}'!A2:ZZ2`,
+      }),
+    ]);
+
+    const headerRow1: string[] = headerRow1Res.data.values?.[0] ?? [];
+    const headerRow2: string[] = headerRow2Res.data.values?.[0] ?? [];
+
+    const dateStr = entry.entry_date.toLocaleDateString("es-ES", {
+      month: "short",
+      day: "numeric",
+    });
+
+    const baseDateColZeroBased = headerRow1.findIndex(
+      (cell) => cell === dateStr,
+    );
+    if (baseDateColZeroBased === -1) {
+      throw new Error(
+        `Date column for '${dateStr}' not found. Ensure the spreadsheet is initialized for the current season.`,
+      );
+    }
+
+    // 2) Find or create the player's row
+    const playerRowIndexOneBased = await this.findOrCreatePlayerRow(
+      spreadsheetId,
+      playerName,
+    );
+
+    // 3) Build batch updates for each provided metric
+    const metricOffsets: Record<string, number> = {
+      tqr_recovery: 0, // Recovery
+      tqr_energy: 1, // Energy
+      tqr_soreness: 2, // Soreness
+      rpe_borg_scale: 3, // RPE
+    };
+
+    const valueUpdates: Array<{
+      range: string;
+      values: (string | number)[][];
+    }> = [];
+
+    (Object.keys(metricOffsets) as Array<keyof typeof metricOffsets>).forEach(
+      (metricKey) => {
+        const value = (entry as any)[metricKey] as number | null | undefined;
+        if (value === undefined) return; // Skip if not provided
+
+        const colOneBased = baseDateColZeroBased + 1 + metricOffsets[metricKey];
+        const a1Range = `'${this.sheetName}'!${this.columnNumberToLetter(colOneBased)}${playerRowIndexOneBased}`;
+        valueUpdates.push({ range: a1Range, values: [[value ?? ""]] });
+      },
+    );
+
+    if (valueUpdates.length === 0) {
+      return; // Nothing to update
+    }
+
+    await this.sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: "RAW",
+        data: valueUpdates,
+      },
+    });
+  }
+
+  // Converts a 1-based column index to its A1 notation letter(s)
+  private columnNumberToLetter(column: number): string {
+    let temp = "";
+    let col = column;
+    while (col > 0) {
+      const remainder = (col - 1) % 26;
+      temp = String.fromCharCode(65 + remainder) + temp;
+      col = Math.floor((col - 1) / 26);
+    }
+    return temp;
+  }
+
+  // Locates the player's row in column A (starting at row 3). If not found, appends a new row with the player's name.
+  private async findOrCreatePlayerRow(
+    spreadsheetId: string,
+    playerName: string,
+  ): Promise<number> {
+    const namesColumnRes = await this.sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `'${this.sheetName}'!A3:A`,
+    });
+
+    const names: string[] = (namesColumnRes.data.values ?? []).map(
+      (row: string[]) => row?.[0] ?? "",
+    );
+
+    const existingIndex = names.findIndex((n) => n === playerName);
+    if (existingIndex !== -1) {
+      // Row index is header(2 rows) + index in names + 1 based offset
+      return 2 + existingIndex + 1;
+    }
+
+    // Append new row with the player's name
+    const appendRes = await this.sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: `'${this.sheetName}'!A:A`,
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: {
+        values: [[playerName]],
+      },
+    });
+
+    // Try to parse the updated range to get the row number
+    const updatedRange: string | undefined =
+      appendRes.data.updates?.updatedRange;
+    if (updatedRange) {
+      const match = updatedRange.match(/!(?:[A-Z]+)(\d+):/);
+      if (match && match[1]) {
+        return parseInt(match[1], 10);
+      }
+    }
+
+    // Fallback: re-read to find last occurrence
+    const namesAfterRes = await this.sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `'${this.sheetName}'!A3:A`,
+    });
+    const namesAfter: string[] = (namesAfterRes.data.values ?? []).map(
+      (row: string[]) => row?.[0] ?? "",
+    );
+    const lastIndex = namesAfter.lastIndexOf(playerName);
+    if (lastIndex !== -1) {
+      return 2 + lastIndex + 1;
+    }
+
+    throw new Error(
+      "Failed to determine the new player row in the spreadsheet",
+    );
+  }
+
+  /**
    * Creates a comprehensive spreadsheet showing all daily entries for the last 6 months
    * with color scaling based on values
    */
@@ -175,7 +334,12 @@ export class GoogleSheetsService {
         const soreness = entry?.tqr_soreness || null;
         const rpe = entry?.rpe_borg_scale || null;
 
-        playerRow.push(recovery, energy, soreness, rpe);
+        playerRow.push(
+          recovery?.toString() || "",
+          energy?.toString() || "",
+          soreness?.toString() || "",
+          rpe?.toString() || "",
+        );
 
         // Update max values for color scaling
         if (recovery && recovery > maxRecovery) maxRecovery = recovery;

@@ -69,25 +69,28 @@ export async function POST(request: Request) {
     if (process.env.GOOGLE_SPREADSHEET_ID) {
       try {
         const sheetsService = new GoogleSheetsService();
-        await sheetsService.updateSpreadsheetData(
+        const entryData: any = {
+          entry_date: dateObject,
+        };
+
+        // Only include fields that are present in formData
+        if (formData.tqr_recovery !== undefined) {
+          entryData.tqr_recovery = formData.tqr_recovery;
+        }
+        if (formData.tqr_energy !== undefined) {
+          entryData.tqr_energy = formData.tqr_energy;
+        }
+        if (formData.tqr_soreness !== undefined) {
+          entryData.tqr_soreness = formData.tqr_soreness;
+        }
+        if (formData.rpe_borg_scale !== undefined) {
+          entryData.rpe_borg_scale = formData.rpe_borg_scale;
+        }
+
+        await sheetsService.updateSingleEntryCells(
           process.env.GOOGLE_SPREADSHEET_ID,
-          [
-            {
-              id: playerId,
-              name: player.name,
-              auth_token: player.auth_token,
-              daily_entries: [
-                {
-                  entry_date: dateObject,
-                  tqr_recovery: formData.tqr_recovery ?? undefined,
-                  tqr_energy: formData.tqr_energy ?? undefined,
-                  tqr_soreness: formData.tqr_soreness ?? undefined,
-                  rpe_borg_scale: formData.rpe_borg_scale ?? undefined,
-                },
-              ],
-            },
-          ],
-          new Date(),
+          player.name,
+          entryData,
         );
         sheetsSync = { success: true, message: "Data synced to Google Sheets" };
       } catch (error) {
