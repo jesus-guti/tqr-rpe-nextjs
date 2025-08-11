@@ -94,7 +94,7 @@ export class GoogleSheetsService {
 
     const valueUpdates: Array<{
       range: string;
-      values: (string | number)[][];
+      values: (string | number | null)[][];
     }> = [];
 
     (Object.keys(metricOffsets) as Array<keyof typeof metricOffsets>).forEach(
@@ -104,7 +104,7 @@ export class GoogleSheetsService {
 
         const colOneBased = baseDateColZeroBased + 1 + metricOffsets[metricKey];
         const a1Range = `'${this.sheetName}'!${this.columnNumberToLetter(colOneBased)}${playerRowIndexOneBased}`;
-        valueUpdates.push({ range: a1Range, values: [[value ?? ""]] });
+        valueUpdates.push({ range: a1Range, values: [[value ?? null]] });
       },
     );
 
@@ -319,7 +319,7 @@ export class GoogleSheetsService {
     // Loop through players (ONE ROW PER PLAYER)
     players.forEach((player) => {
       // Create ONE row for this player
-      const playerRow = [player.name];
+      const playerRow: (string | number | null)[] = [player.name];
 
       // Fill the row with data for each individual date
       allDates.forEach((date) => {
@@ -337,10 +337,10 @@ export class GoogleSheetsService {
         const rpe = entry?.rpe_borg_scale || null;
 
         playerRow.push(
-          recovery?.toString() || "",
-          energy?.toString() || "",
-          soreness?.toString() || "",
-          rpe?.toString() || "",
+          recovery ?? null,
+          energy ?? null,
+          soreness ?? null,
+          rpe ?? null,
         );
 
         // Update max values for color scaling
