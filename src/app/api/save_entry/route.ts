@@ -71,8 +71,18 @@ export async function POST(request: Request) {
 
     if (process.env.GOOGLE_SPREADSHEET_ID) {
       try {
+        console.log(
+          `[Sheets Sync] Starting sync for ${player.name}, date: ${dateObject.toISOString()}`,
+        );
+
         const sheetsService = new GoogleSheetsService();
-        const entryData: any = {
+        const entryData: {
+          entry_date: Date;
+          tqr_recovery?: number;
+          tqr_energy?: number;
+          tqr_soreness?: number;
+          rpe_borg_scale?: number;
+        } = {
           entry_date: dateObject,
         };
 
@@ -90,17 +100,32 @@ export async function POST(request: Request) {
           entryData.rpe_borg_scale = formData.rpe_borg_scale;
         }
 
+        console.log(
+          `[Sheets Sync] Entry data:`,
+          JSON.stringify(entryData, (key, value) =>
+            value instanceof Date ? value.toISOString() : value,
+          ),
+        );
+
         await sheetsService.updateSingleEntryCells(
           process.env.GOOGLE_SPREADSHEET_ID,
           player.name,
           entryData,
         );
+
+        console.log(`[Sheets Sync] Success for ${player.name}`);
         sheetsSync = { success: true, message: "Data synced to Google Sheets" };
-      } catch (error) {
-        console.error("Google Sheets sync error:", error);
+      } catch (error: any) {
+        console.error("[Sheets Sync] Error:", error.message || error);
+        if (error.response?.data) {
+          console.error(
+            "[Sheets Sync] API Error details:",
+            JSON.stringify(error.response.data),
+          );
+        }
         sheetsSync = {
           success: false,
-          message: "Failed to sync to Google Sheets",
+          message: error.message || "Failed to sync to Google Sheets",
         };
       }
     }

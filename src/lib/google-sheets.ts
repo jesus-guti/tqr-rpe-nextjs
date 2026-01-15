@@ -84,10 +84,9 @@ export class GoogleSheetsService {
     const headerRow1: string[] = headerRow1Res.data.values?.[0] ?? [];
     const headerRow2: string[] = headerRow2Res.data.values?.[0] ?? [];
 
-    const dateStr = entry.entry_date.toLocaleDateString("es-ES", {
-      month: "short",
-      day: "numeric",
-    });
+    // Use UTC-based formatting to match the sync function
+    const dateStr = this.formatDateForSheet(entry.entry_date);
+    console.log(`Looking for date column: "${dateStr}" (from ${entry.entry_date.toISOString()})`);
 
     let baseDateColZeroBased = headerRow1.findIndex(
       (cell) => cell === dateStr,
@@ -309,42 +308,65 @@ export class GoogleSheetsService {
     // If we're in July-December, the season started in July of the CURRENT year
     const seasonStartYear = currentMonth < 6 ? currentYear - 1 : currentYear;
 
-    const startDate = new Date(seasonStartYear, 6, 1); // July 1st
-    startDate.setHours(0, 0, 0, 0);
-    return startDate;
+    // Create date in UTC to avoid timezone issues
+    return new Date(Date.UTC(seasonStartYear, 6, 1, 0, 0, 0, 0));
+  }
+
+  /**
+   * Formats a date as "d mmm" in Spanish (e.g., "8 ene") consistently using UTC
+   * to avoid timezone issues
+   */
+  private formatDateForSheet(date: Date): string {
+    const months = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic"];
+    const day = date.getUTCDate();
+    const month = months[date.getUTCMonth()];
+    return `${day} ${month}`;
+  }
+
+  /**
+   * Gets the date string in YYYY-MM-DD format using UTC
+   */
+  private getDateKey(date: Date): string {
+    return date.toISOString().split("T")[0];
   }
 
   /**
    * Generates weekly ranges instead of individual dates to reduce columns
+   * All dates are created in UTC to avoid timezone issues
    */
   private generateWeeklyRanges(
     startDate: Date,
     endDate: Date,
   ): { weekStart: Date; weekEnd: Date; weekLabel: string }[] {
     const weeks: { weekStart: Date; weekEnd: Date; weekLabel: string }[] = [];
-    const currentDate = new Date(startDate);
+
+    // Work with UTC dates to avoid timezone issues
+    let currentTime = startDate.getTime();
 
     // Start from the beginning of the week (Monday)
-    const dayOfWeek = currentDate.getDay();
+    const tempDate = new Date(currentTime);
+    const dayOfWeek = tempDate.getUTCDay();
     const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    currentDate.setDate(currentDate.getDate() - daysToMonday);
+    currentTime -= daysToMonday * 24 * 60 * 60 * 1000;
 
-    while (currentDate <= endDate) {
-      const weekStart = new Date(currentDate);
-      const weekEnd = new Date(currentDate);
-      weekEnd.setDate(weekEnd.getDate() + 6);
+    const endTime = endDate.getTime();
 
-      const weekLabel = `Week ${weekStart.toLocaleDateString("es-ES", { month: "short", day: "numeric" })} - ${weekEnd.toLocaleDateString("es-ES", { month: "short", day: "numeric" })}`;
+    while (currentTime <= endTime) {
+      const weekStart = new Date(currentTime);
+      const weekEnd = new Date(currentTime + 6 * 24 * 60 * 60 * 1000);
+
+      const weekLabel = `Week ${this.formatDateForSheet(weekStart)} - ${this.formatDateForSheet(weekEnd)}`;
 
       weeks.push({ weekStart, weekEnd, weekLabel });
-      currentDate.setDate(currentDate.getDate() + 7);
+      currentTime += 7 * 24 * 60 * 60 * 1000;
     }
 
     return weeks;
   }
 
   /**
-   * Prepares the data matrix with one row per player and columns for each week
+   * Prepares the data matrix with one row per player and columns for each day
+   * All date handling uses UTC to avoid timezone issues
    */
   private prepareDataMatrix(
     players: PlayerData[],
@@ -364,13 +386,14 @@ export class GoogleSheetsService {
       maxSoreness = 0,
       maxRpe = 0;
 
-    // Generate all individual dates from the weekly ranges
+    // Generate all individual dates from the weekly ranges (using UTC)
     const allDates: Date[] = [];
     weeklyRanges.forEach((week) => {
-      const currentDate = new Date(week.weekStart);
-      while (currentDate <= week.weekEnd) {
-        allDates.push(new Date(currentDate));
-        currentDate.setDate(currentDate.getDate() + 1);
+      let currentTime = week.weekStart.getTime();
+      const endTime = week.weekEnd.getTime();
+      while (currentTime <= endTime) {
+        allDates.push(new Date(currentTime));
+        currentTime += 24 * 60 * 60 * 1000; // Add one day in milliseconds
       }
     });
 
@@ -378,53 +401,59 @@ export class GoogleSheetsService {
     const headerRow1 = ["Player Name"];
     const headerRow2 = [""];
 
-    // Add date headers for each individual date
+    // Add date headers for each individual date using UTC formatting
     allDates.forEach((date) => {
-      const dateStr = date.toLocaleDateString("es-ES", {
-        month: "short",
-        day: "numeric",
-      });
+      const dateStr = this.formatDateForSheet(date);
       headerRow1.push(dateStr, "", "", ""); // Date label spans 4 columns
       headerRow2.push("Recovery", "Energy", "Soreness", "RPE");
     });
 
     dataMatrix.push(headerRow1, headerRow2);
 
+    // Create a map of dateKey -> date for faster lookup
+    const dateKeyToIndex = new Map<string, number>();
+    allDates.forEach((date, index) => {
+      dateKeyToIndex.set(this.getDateKey(date), index);
+    });
+
     // Loop through players (ONE ROW PER PLAYER)
     players.forEach((player) => {
-      // Create ONE row for this player
+      // Create ONE row for this player, initialized with nulls
       const playerRow: (string | number | null)[] = [player.name];
 
-      // Fill the row with data for each individual date
-      allDates.forEach((date) => {
-        // Find the specific entry for this date
-        const entry = player.daily_entries.find(
-          (e) =>
-            e.entry_date.toISOString().split("T")[0] ===
-            date.toISOString().split("T")[0],
-        );
+      // Initialize all date slots with nulls (4 metrics per date)
+      for (let i = 0; i < allDates.length; i++) {
+        playerRow.push(null, null, null, null);
+      }
 
-        // Use the actual values (no averaging)
-        const recovery = entry?.tqr_recovery || null;
-        const energy = entry?.tqr_energy || null;
-        const soreness = entry?.tqr_soreness || null;
-        const rpe = entry?.rpe_borg_scale || null;
+      // Fill in the data from player entries
+      player.daily_entries.forEach((entry) => {
+        const entryDateKey = this.getDateKey(entry.entry_date);
+        const dateIndex = dateKeyToIndex.get(entryDateKey);
 
-        playerRow.push(
-          recovery ?? null,
-          energy ?? null,
-          soreness ?? null,
-          rpe ?? null,
-        );
+        if (dateIndex !== undefined) {
+          // Calculate position in playerRow (1 for name + 4 metrics per date)
+          const startPos = 1 + dateIndex * 4;
 
-        // Update max values for color scaling
-        if (recovery && recovery > maxRecovery) maxRecovery = recovery;
-        if (energy && energy > maxEnergy) maxEnergy = energy;
-        if (soreness && soreness > maxSoreness) maxSoreness = soreness;
-        if (rpe && rpe > maxRpe) maxRpe = rpe;
+          const recovery = entry.tqr_recovery ?? null;
+          const energy = entry.tqr_energy ?? null;
+          const soreness = entry.tqr_soreness ?? null;
+          const rpe = entry.rpe_borg_scale ?? null;
+
+          playerRow[startPos] = recovery;
+          playerRow[startPos + 1] = energy;
+          playerRow[startPos + 2] = soreness;
+          playerRow[startPos + 3] = rpe;
+
+          // Update max values for color scaling
+          if (recovery && recovery > maxRecovery) maxRecovery = recovery;
+          if (energy && energy > maxEnergy) maxEnergy = energy;
+          if (soreness && soreness > maxSoreness) maxSoreness = soreness;
+          if (rpe && rpe > maxRpe) maxRpe = rpe;
+        }
       });
 
-      // Add the complete player row to the matrix (ONCE per player)
+      // Add the complete player row to the matrix
       dataMatrix.push(playerRow);
     });
 
