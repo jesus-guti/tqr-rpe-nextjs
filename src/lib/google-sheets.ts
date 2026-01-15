@@ -81,8 +81,8 @@ export class GoogleSheetsService {
       }),
     ]);
 
-    let headerRow1: string[] = headerRow1Res.data.values?.[0] ?? [];
-    let headerRow2: string[] = headerRow2Res.data.values?.[0] ?? [];
+    const headerRow1: string[] = headerRow1Res.data.values?.[0] ?? [];
+    const headerRow2: string[] = headerRow2Res.data.values?.[0] ?? [];
 
     const dateStr = entry.entry_date.toLocaleDateString("es-ES", {
       month: "short",
